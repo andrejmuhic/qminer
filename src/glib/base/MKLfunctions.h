@@ -1,5 +1,6 @@
 /**
- * Copyright (c) 2015, Jozef Stefan Institute, Quintelligence d.o.o. and contributors
+ * Copyright (c) 2015, Jozef Stefan Institute, Erik Novak,
+ * final refactoring done by Andrej Muhic
  * All rights reserved.
  * 
  * This source code is licensed under the FreeBSD license found in the
@@ -1143,7 +1144,7 @@ static void SVDFactorization(const TVVec<Type, Size, ColMajor>& A,
 	// The solution is saved in x.
 	template<class Type, class Size, bool ColMajor = false>
 static void SVDSolve(const TVVec<Type, Size, ColMajor>& A, TVec<Type, Size>& x,
-			const TVec<Type, Size>& b, const Type& EpsSing) {
+			const TVec<Type, Size>& b, const Type& EpsSing = Type(1e-8)) {
 		Assert(A.GetRows() == b.Len());
 
 		// data used for solution

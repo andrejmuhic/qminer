@@ -97,7 +97,7 @@ private:
   PUrlEnv UrlEnv;
   TStr HdStr;
   TMem BodyMem;
-  void ParseSearch(const TStr& SearchStr);
+  void ParseSearch(const TStr& SearchStr, const bool requireQMark=true);
   void ParseHttpRq(const PSIn& SIn);
   bool IsMobileUsrAgent() const;
   bool IsTabletUsrAgent() const;

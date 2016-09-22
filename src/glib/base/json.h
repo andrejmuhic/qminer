@@ -86,6 +86,20 @@ public:
   static PJsonVal NewArr(const TIntV& IntV);
   static PJsonVal NewArr(const TUInt64V& IntV);
   static PJsonVal NewArr(const TFltV& FltV);
+  template<typename val = double, typename index = int, bool colmajor = false>
+  static PJsonVal NewArr(const TVVec<TNum<val>, index, colmajor>& FltVV){
+  	PJsonVal Mat = TJsonVal::NewArr();
+	index ndata = FltVV.GetDatas();
+	for (index i = 0; i < ndata; ++i){
+		TVec< TNum<val>, index> FltV;
+		(const_cast<TVVec<TNum<val>, index, colmajor>&>(FltVV) ).GetDataPtr(i, FltV);
+		PJsonVal Data = TJsonVal::NewArr(FltV);
+		Mat->AddToArr(Data);
+	}
+	return Mat;
+  }
+
+  
   static PJsonVal NewArr(const double& Val1, const double& Val2);
   static PJsonVal NewArr(const TStrV& StrV);
   static PJsonVal NewArr(const TFltPr& FltPr);
@@ -127,6 +141,7 @@ public:
 
   int GetArrVals() const {EAssert(IsArr()); return ValV.Len();}
   PJsonVal GetArrVal(const int& ValN) const {return ValV[ValN];}
+  void GetArr(TVec<PJsonVal> & Vec) const;
   void GetArrNumV(TFltV& FltV) const;
   void GetArrNumSpV(TIntFltKdV& NumSpV) const;
   void GetArrIntV(TIntV& IntV) const;

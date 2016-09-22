@@ -95,7 +95,7 @@ void TVec<TVal, TSizeTy>::Resize(const TSizeTy& _MxVals){
   }
   if (ValT==NULL){
     try {ValT=new TVal[MxVals];}
-    catch (std::exception& Ex){
+    catch (std::exception Ex){
       FailR(TStr::Fmt("TVec::Resize: %s, Length:%s, Capacity:%s, New capacity:%s, Type:%s [Program failed to allocate more memory. Solution: Get a bigger machine and a 64-bit compiler.]",
         Ex.what(), TInt::GetStr(Vals).CStr(), TInt::GetStr(MxVals).CStr(), TInt::GetStr(_MxVals).CStr(), GetTypeNm(*this).CStr()).CStr());}
   } else {
@@ -124,6 +124,12 @@ TStr TVec<TVal, TSizeTy>::GetXOutOfBoundsErrMsg(const TSizeTy& ValN) const {
 template <class TVal, class TSizeTy>
 TVec<TVal, TSizeTy>::TVec(const TVec<TVal, TSizeTy>& Vec){
   MxVals=Vec.MxVals; Vals=Vec.Vals;
+  //Fix for memory leak for unhandled case when Vec is an extension!
+  if (MxVals == -1){
+	  ValT = Vec.ValT;
+	  return;
+  }
+
   if (MxVals==0){ValT=NULL;} else {ValT=new TVal[MxVals];}
   for (TSizeTy ValN=0; ValN<Vec.Vals; ValN++){ValT[ValN]=Vec.ValT[ValN];}
 }
@@ -161,6 +167,23 @@ void TVec<TVal, TSizeTy>::Save(TSOut& SOut) const {
 template <class TVal, class TSizeTy>
 TVec<TVal, TSizeTy>& TVec<TVal, TSizeTy>::operator=(const TVec<TVal, TSizeTy>& Vec){
 	if (this != &Vec) {
+		if (Vec.MxVals == -1){
+			if (MxVals != -1) delete[] ValT;
+			ValT = Vec.ValT;
+			Vals = Vec.Vals;
+			MxVals = Vec.MxVals;
+			return *this;
+		}
+
+		//Handle the special case, pass the data to an Extension of, if the dimensions of both vectors match!
+		//Typical use case, assign the data to the row of the matrix
+		if (MxVals == -1){
+			if (Vals == Vec.Vals){
+				for (TSizeTy ValN = 0; ValN < Vec.Vals; ValN++) { ValT[ValN] = Vec.ValT[ValN]; }
+			}
+			return *this;
+		}
+
 		// check if we have enough space and we are not in a vector pool
 		if ((MxVals > 0) && (Vec.Vals <= MxVals)) {
 			// only need to copy the new number of elements
@@ -168,6 +191,7 @@ TVec<TVal, TSizeTy>& TVec<TVal, TSizeTy>::operator=(const TVec<TVal, TSizeTy>& V
 		} else {
 			// delete old buffer if we have it and own it
 			if ((ValT != NULL) && (MxVals != -1)) { delete[] ValT; }
+			// we will copy only the part in use, not the whole vector!
 			MxVals = Vals = Vec.Vals;
 			// create the buffer if we have any values
 			if (MxVals == 0) { ValT = NULL; } else { ValT = new TVal[MxVals]; }
@@ -1210,14 +1234,15 @@ void  TVVec<TVal, TSizeTy, colmajor>::CopyFrom(const  TVVec<TVal, TSizeTy, colma
 	}
 }
 
-
+//This two should be specialized
+//This one only currently makes sense for rowmajor format, colmajor=false
 template <class TVal, class TSizeTy, bool colmajor>
-void  TVVec<TVal, TSizeTy, colmajor>::AddXDim(){
+void  TVVec<TVal, TSizeTy, colmajor>::AddXDim(const TSizeTy& NDims){
 	TVVec<TVal, TSizeTy, colmajor> NewVVec(XDim + 1, YDim);
 	NewVVec.CopyFrom(*this);
 	*this = NewVVec;
 }
-
+//This one only currently makes sense for colmajor format, colmajor=true
 template <class TVal, class TSizeTy, bool colmajor>
 void  TVVec<TVal, TSizeTy, colmajor>::AddYDim(const TSizeTy& NDims){
 	TVVec<TVal, TSizeTy, colmajor> NewVVec(XDim, YDim + NDims);

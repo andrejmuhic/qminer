@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015, Jozef Stefan Institute, Quintelligence d.o.o. and contributors
+ * Copyright (c) 2015, Jozef Stefan Institute, Andrej Muhic
  * All rights reserved.
  * 
  * This source code is licensed under the FreeBSD license found in the
@@ -7,6 +7,9 @@
  */
 #ifndef UNICODETEXTTOKENIZER_H
 #define UNICODETEXTTOKENIZER_H
+
+#include "base.h"
+#include "mine.h"
 
 // Unicode vector space model
 namespace TUnicodeVSM {
@@ -44,13 +47,14 @@ namespace TUnicodeVSM {
 			return TUStr::IsNumeric(unicode_char);
 		};
 	};
-	class TUBow;
-	typedef TPt<TUBow> PUBow;
-	class TUBow{
+
+	/*Andrej: This class did not serve its purpose*/
+	template<class TVal, class TSizeTy>
+	class TUBowAbstract{
 	private:
 		TCRef CRef;
 	public:
-		friend class TPt<TUBow>;
+		friend class TPt<TUBowAbstract<TVal, TSizeTy>>;
 	private:
 		//Lang of the text
 		TStr Lang;
@@ -60,16 +64,19 @@ namespace TUnicodeVSM {
 		TInt MinLen;
 		TInt MaxLen;
 	public:
-        virtual ~TUBow() { }
-		virtual TUStrV TokenizeWords(TStr Text, TFilter Filter = TFilterNum()){ return TUStrV(); };
+        virtual ~TUBowAbstract() { }
+		virtual TUStrV TokenizeWords(TStr& Text, TFilter Filter = TFilterNum()){ return TUStrV(); };
 		virtual TVec<TIntKd>  TextToVec(TUStr& Text){ return TVec<TIntKd>(); };
 		virtual void TextToVec(TUStr& Text, TPair<TIntV, TFltV>& SparseVec){};
 		virtual void TextToVec(TUStrV& Docs, TTriple<TIntV, TIntV, TFltV>& DocMatrix){};
 	};
+	typedef TUBowAbstract<TInt, TFlt> TUBow;
+	typedef TPt<TUBow> PUBow;
+	/*This class did not serve its purpose*/
 		
 	class TGlibUBow;
 	typedef TPt<TGlibUBow> PGlibUBow;
-	class TGlibUBow : public TUBow{
+	class TGlibUBow{// : public TUBow{
 	private:
 		TCRef CRef;
 	public:
@@ -139,10 +146,13 @@ namespace TUnicodeVSM {
 		void ComputeDocFreq(TIntV &InvDoc, TInt& NDocs);
 		void ComputeDocFreq(){ ComputeDocFreq(this->InvDoc, this->NDocs); }
 	public:
-		virtual TVec<TIntKd>  TextToVec(TUStr& Text);
-		virtual void TextToVec(TUStr& Text, TPair<TIntV, TFltV>& SparseVec);
-		virtual void TextToVec(TUStrV& Docs, TTriple<TIntV, TIntV, TFltV>& DocMatrix);
-		virtual void TextToVec(TUStrV& Docs, TTriple<TIntV, TIntV, TFltV>& DocMatrix, const TFltV& invdoc);
+		TVec<TIntKd>  TextToVec(TUStr& Text);
+		template<class val, class index>
+		void TextToVec(TUStr& Text, TPair<TVec<TNum<index>, index>, TVec<TNum<val>, index>>& SparseVec);
+		template<class val, class index>
+		void TextToVec(TUStrV& Docs, TTriple<TVec<TNum<index>, index>, TVec<TNum<index>, index>, TVec<TNum<val>, index>>& DocMatrix);
+		template<class val, class index>
+		void TextToVec(TUStrV& Docs, TTriple<TVec<TNum<index>, index>, TVec<TNum<index>, index>, TVec<TNum<val>, index>>& DocMatrix, const TVec<TNum<val>, index> &invdoc);
 	//This two functions do essentialy the same
 	//AddTokenizeWords could and should use TokenizeWords instead of resuing the code
 	//Code will be refactored on first occasion
@@ -166,6 +176,7 @@ namespace TUnicodeVSM {
 		//Shift = 1 One Based Indexing (Matlab indices) to Zero Based Indexing
 		//Shift = 0 Zero Based Indexing 
 		void CompactVocabulary(TIntV& WordIndex, TInt Shift = 1);
+		void LoadWordVocabulary(TStr& FileName);
 		void BuildVocabulary(TStr& File){ processWikipediaLineDocGlib(File, '\r', false); };
 		void ExportMatrix(TTriple<TIntV, TIntV, TFltV>& Mat);
 		void AddTokenize(TUStr& Text, TBool AddToMatrix = true, TBool UpdateVoc = true);
@@ -177,6 +188,77 @@ namespace TUnicodeVSM {
 	};
 
 			/*Tokenize for TStr and TUStr*/
+	template<class val, class index>
+	void TGlibUBow::TextToVec(TUStr& Text, TPair<TVec<TNum<index>, index>, TVec<TNum<val>, index>>& SparseVec){
+		TVec<TIntKd> SpVec = TextToVec(Text);
+		//Convert
+		TVec<TNum<index>, index>& IdxV = SparseVec.Val1;
+		TVec<TNum<val>, index>&   ValV = SparseVec.Val2;
+		int n = (index)SpVec.Len();
+		IdxV.Gen(n);
+		ValV.Gen(n);
+		//printf("Index size: %llu\n", sizeof(index));
+		for (int ElN = 0; ElN < n; ElN++) {
+			IdxV[ElN] = TNum<index>( static_cast<index>(SpVec[ElN].Key.Val) );
+			ValV[ElN] = TNum<val>(static_cast<val>(SpVec[ElN].Dat.Val));
+		}
+	}
+
+	/*Maybe this should be relaxed, so invdoc can be converted!*/
+	template<class val, class index>
+	void TGlibUBow::TextToVec(TUStrV& Docs, TTriple<TVec<TNum<index>, index>, TVec<TNum<index>, index>, TVec<TNum<val>, index>>& DocMatrix, const TVec<TNum<val>, index> &invdoc){
+		TVec<TNum<index>, index>* WordIdxV = &DocMatrix.Val1;
+		TVec<TNum<index>, index>* DocIdxV = &DocMatrix.Val2;
+		TVec<TNum<val>, index>* ValV = &DocMatrix.Val3;
+		int n = Docs.Len();
+		TVec<TVec<TIntKd>> DocV;
+		DocV.Gen(n, n);
+#pragma omp parallel for
+		for (int i = 0; i < n; i++){
+			TVec<TIntKd>& SpVec = DocV[i];
+			SpVec = TextToVec(Docs[i]);
+		}
+
+		for (int i = 0; i < n; i++){
+			TVec<TIntKd>& SpVec = DocV[i];
+			int m = SpVec.Len();
+			for (int ElN = 0; ElN < m; ElN++) {
+				DocIdxV->Add(i);
+				TNum<index> Index = SpVec[ElN].Key;
+				TNum<index> Freq = SpVec[ElN].Dat;
+				WordIdxV->Add(Index);
+				TNum<val> Weighted = TNum<val>( static_cast<val>(Freq.Val) * invdoc[Index.Val] );
+				ValV->Add(Weighted);
+			}
+		}
+	}
+
+	template<class val, class index>
+	void TGlibUBow::TextToVec(TUStrV& Docs, TTriple<TVec<TNum<index>, index>, TVec<TNum<index>, index>, TVec<TNum<val>, index>>& DocMatrix){
+		TVec<TNum<index>, index>* WordIdxV = &DocMatrix.Val1;
+		TVec<TNum<index>, index>* DocIdxV = &DocMatrix.Val2;
+		TVec<TNum<val>, index>* ValV = &DocMatrix.Val3;
+		int n = Docs.Len();
+		TVec<TVec<TIntKd>> DocV;
+		DocV.Gen(n, n);
+#pragma omp parallel for
+		for (int i = 0; i < n; i++){
+			TVec<TIntKd>& SpVec = DocV[i];
+			SpVec = TextToVec(Docs[i]);
+		}
+
+		for (int i = 0; i < Docs.Len(); i++){
+			TVec<TIntKd>& SpVec = DocV[i];
+			int m = SpVec.Len();
+			for (int ElN = 0; ElN < m; ElN++) {
+				DocIdxV->Add(i);
+				TNum<index> Index = SpVec[ElN].Key;
+				TNum<val> FreqNum = TNum<val>(static_cast<val>(SpVec[ElN].Dat.Val) );
+				WordIdxV->Add(Index);
+				ValV->Add(FreqNum);
+			}
+		}
+	}
 
 
 

@@ -476,14 +476,14 @@ public:
 
 /////////////////////////////////////////////////
 // Http-Request
-void THttpRq::ParseSearch(const TStr& SearchStr){
+void THttpRq::ParseSearch(const TStr& SearchStr, const bool requireQMark){
   PSIn SIn=TStrIn::New(SearchStr, false);
   THttpChRet ChRet(SIn, heBadSearchStr);
   try {
   // check empty search string
   if (ChRet.Eof()){return;}
   // require '?' at the beginning
-  if (ChRet.GetCh()!='?'){
+  if (requireQMark && ChRet.GetCh()!='?'){
     throw THttpEx(heBadSearchStr);}
   // parse key=val{&...} pairs
   TChA KeyNm; TChA ValStr;
@@ -585,32 +585,51 @@ void THttpRq::ParseHttpRq(const PSIn& SIn){
   // search string
   TStr SearchStr;
   if (Method==hrmGet){
-	  ParseSearch(Url->GetSearchStr());
-  }
-  else if ((Method == hrmPost) && (
-	  (!IsFldNm(THttp::ContTypeFldNm)) ||
-	  (GetFldVal(THttp::ContTypeFldNm).SearchStr(THttp::TextHtmlFldVal) >= 0) ||		// content-type can also contain "charset=utf-8"
-	  (GetFldVal(THttp::ContTypeFldNm).SearchStr(THttp::AppW3FormFldVal) >= 0))) {
-	  ParseSearch(TStr("?") + BodyMem.GetAsStr());
-  }
-  // if json object then parse the object values
-  else if (Method == hrmPost && GetFldVal(THttp::ContTypeFldNm).SearchStr(THttp::AppJSonFldVal) >= 0) {
-	  bool Ok; TStr MsgStr;
-	  PJsonVal Json = TJsonVal::GetValFromStr(BodyMem.GetAsStr(), Ok, MsgStr);
-	  if (Ok && Json->IsObj()) {
-		  for (int N = 0; N < Json->GetObjKeys(); N++) {
-			  const TStr Key = Json->GetObjKey(N);
-			  PJsonVal ValJson = Json->GetObjKey(Key);
-			  if (ValJson->IsStr()) UrlEnv->AddToKeyVal(Key, ValJson->GetStr());	  // don't put strings into additional ""
-			  else if (ValJson->IsArr()) {
-				  for (int K = 0; K < ValJson->GetArrVals(); K++) {
-					  if (ValJson->GetArrVal(K)->IsStr()) UrlEnv->AddToKeyVal(Key, ValJson->GetArrVal(K)->GetStr());	  // don't put strings into additional ""
-					  else	UrlEnv->AddToKeyVal(Key, ValJson->GetArrVal(K)->SaveStr());
-				  }
-			  }
-			  else	UrlEnv->AddToKeyVal(Key, ValJson->SaveStr());
+    SearchStr=Url->GetSearchStr();
+	ParseSearch(SearchStr);
+  } else
+	  if (Method == hrmPost)
+  {
+	  bool contentTypeDefined = IsFldNm(THttp::ContTypeFldNm);
+	  bool allowedContent = true;
+	  if (contentTypeDefined){
+		  //Content str with possible encoding
+		  TStr ContentStr = GetFldVal(THttp::ContTypeFldNm);
+		  //Content str without Encoding; Encoding
+		  TStr ContentStrBefore, Encoding;
+		  ContentStr.SplitOnCh(ContentStrBefore, ';', Encoding);
+		  ContentStrBefore.ToTrunc();
+		  //Checking if content is allowed
+		  if (!(ContentStrBefore == THttp::TextHtmlFldVal) && !(ContentStrBefore == THttp::AppW3FormFldVal)){
+			  allowedContent = false;
 		  }
 	  }
+	  if (allowedContent){
+		  SearchStr = BodyMem.GetAsStr();
+		  //No need for question mark at the start
+	      ParseSearch(SearchStr, false);
+	  }
+#ifndef DISABLE_PARSE_JSON
+	  bool jsonContent = GetFldVal(THttp::ContTypeFldNm).SearchStr(THttp::AppJSonFldVal) >= 0;
+	  if (jsonContent) {
+		  TStr MsgStr;
+		  PJsonVal Json = TJsonVal::GetValFromStr(BodyMem.GetAsStr(), Ok, MsgStr);
+		  if (Ok && Json->IsObj()) {
+			  for (int N = 0; N < Json->GetObjKeys(); N++) {
+				  const TStr Key = Json->GetObjKey(N);
+				  PJsonVal ValJson = Json->GetObjKey(Key);
+				  if (ValJson->IsStr()) UrlEnv->AddToKeyVal(Key, ValJson->GetStr());	  // don't put strings into additional ""
+				  else if (ValJson->IsArr()) {
+					  for (int K = 0; K < ValJson->GetArrVals(); K++) {
+						  if (ValJson->GetArrVal(K)->IsStr()) UrlEnv->AddToKeyVal(Key, ValJson->GetArrVal(K)->GetStr());	  // don't put strings into additional ""
+						  else	UrlEnv->AddToKeyVal(Key, ValJson->GetArrVal(K)->SaveStr());
+					  }
+				  }
+				  else	UrlEnv->AddToKeyVal(Key, ValJson->SaveStr());
+			  }
+		  }
+	  }
+#endif
   }
   // at this point ok=true
   Ok=true;

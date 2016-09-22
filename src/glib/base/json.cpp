@@ -134,6 +134,14 @@ TTm TJsonVal::GetTm() const {
   }
 }
 
+void TJsonVal::GetArr(TVec<PJsonVal> & Vec) const {
+	EAssert(IsArr());
+	for (int N = 0; N < GetArrVals(); N++) {
+		PJsonVal ArrVal = GetArrVal(N);
+		Vec.Add(ArrVal);
+	}
+}
+
 void TJsonVal::GetArrNumV(TFltV& FltV) const {
     EAssert(IsArr());
     for (int FltN = 0; FltN < GetArrVals(); FltN++) {
@@ -450,7 +458,19 @@ void TJsonVal::GetChAFromVal(const PJsonVal& Val, TChA& ChA){
     	if (TFlt::IsNan(Val->GetNum())) {
     		ChA += "null";
     	} else {
+#ifndef JSON_INT
     		ChA += TStr::Fmt("%.16g", Val->GetNum());
+#else
+// Andrej: %f and %d
+			double val = Val->GetNum();
+			int  pom = (int) val;
+			if (pom == val){
+				ChA += TStr::Fmt("%d", pom);
+			}
+			else{
+				ChA += TStr::Fmt("%f", val);
+			}
+#endif
     	}
     	break;
     case jvtStr:

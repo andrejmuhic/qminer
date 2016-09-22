@@ -56,7 +56,7 @@ public:
   TPair& operator=(const TPair& Pair){
     if (this!=&Pair){Val1=Pair.Val1; Val2=Pair.Val2;} return *this;}
   TPair& operator=(TPair&& Pair) {
-	  if (this != &Pair) {std::swap(Val1, Pair.Val1); std::swap(Val2, Pair.Val2);} return *this;}
+	  if (this != &Pair) { Val1 = std::move(Pair.Val1); Val2 = std::move(Pair.Val2);} return *this;}
   bool operator==(const TPair& Pair) const {
     return (Val1==Pair.Val1)&&(Val2==Pair.Val2);}
   bool operator<(const TPair& Pair) const {
@@ -166,12 +166,13 @@ public:
 
   TTriple& operator=(const TTriple& Triple){
     if (this!=&Triple){Val1=Triple.Val1; Val2=Triple.Val2; Val3=Triple.Val3;}
-    return *this;}
+	  return *this;
+  }
   TTriple& operator=(TTriple&& Triple) {
 	  if (this != &Triple) {
-		std::swap(Val1, Triple.Val1);
-		std::swap(Val2, Triple.Val2);
-		std::swap(Val3, Triple.Val3);
+		  Val1 = std::move(Triple.Val1);
+		  Val2 = std::move(Triple.Val2);
+		  Val3 = std::move(Triple.Val3);
 	  }
 	  return *this;
   }
@@ -538,6 +539,18 @@ public:
   void GenExt(TVal *_ValT, const TSizeTy& _Vals){
     if (ValT!=NULL && MxVals!=-1){delete[] ValT;}
     MxVals=-1; Vals=_Vals; ValT=_ValT;}
+  /// Constructs a vector of \c _Vals elements of memory array \c _ValT. ##TVec::GenExt
+  void GetExt(TVec& Vec, const TSizeTy& Start, const TSizeTy& End){
+	  if (Vec.ValT != NULL && Vec.MxVals != -1){ delete[] Vec.ValT; }
+	  Vec.MxVals = -1; Vec.Vals = End - Start + 1; Vec.ValT = ValT + Start;
+  }
+
+
+  /// Constructs a vector of \c _Vals elements of memory array \c _ValT. ##TVec::GenExt
+  void GetExtData(TVec& Vec, const TSizeTy& Start, const TSizeTy& End){
+	  GetExt(Vec, Start, End);
+  }
+
   /// Returns true if the vector was created using the \c GenExt(). ##TVec::IsExt
   bool IsExt() const {return MxVals==-1;}
   /// Reserves enough memory for the vector to store \c _MxVals elements.
@@ -1376,13 +1389,26 @@ public:
 		XDim(_XDim), YDim(_YDim), ValV(_ValV), ColMajor(_ColMajor){
 		IAssert(ValV.Len() == XDim*YDim);
 	}
-	//Andrej beta specialize this only for row major, works only for row major
-	void GetExtRows(TVVec& VVec, const TSizeTy& RowStart, const TSizeTy& RowEnd){
-		//VVec.ValV.MxVals = -1;//I will not be resonsible for this memory!
+	void GetExtRows(TVVec<TVal, TSizeTy, colmajor>& VVec, const TSizeTy& RowStart, const TSizeTy& RowEnd){
+		Assert(!colmajor);
 		VVec.ValV.GenExt(&ValV[RowStart*YDim], (RowEnd - RowStart + 1)*YDim);
 		VVec.XDim = (RowEnd - RowStart + 1);
 		VVec.YDim = YDim;
 	}
+	void GetExtCols(TVVec<TVal, TSizeTy, colmajor>& VVec, const TSizeTy& ColStart, const TSizeTy& ColEnd){
+		Assert(colmajor);
+		VVec.ValV.GenExt(&ValV[ColStart*XDim], (ColEnd - ColStart + 1)*XDim);
+		VVec.XDim = XDim;
+		VVec.YDim = (ColEnd - ColStart + 1);
+	}
+	void GetExtData(TVVec<TVal, TSizeTy, colmajor>& VVec, const TSizeTy& DatStart, const TSizeTy& DatEnd){
+		colmajor ? GetExtCols(VVec, DatStart, DatEnd) : GetExtRows(VVec, DatStart, DatEnd);
+	}
+
+	void GetExtData(TVVec<TVal, TSizeTy, colmajor>& VVec){
+		colmajor ? GetExtCols(VVec, 0, VVec.GetDatas()-1) : GetExtRows(VVec, 0, VVec.GetDatas());
+	}
+
 	explicit TVVec(TSIn& SIn) { Load(SIn); }
 	void Load(TSIn& SIn){
 		SIn.Load(XDim);
@@ -1417,10 +1443,17 @@ public:
 	  EAssert((_XDim >= 0) && (_YDim >= 0));
 	  XDim = _XDim; YDim = _YDim;  ValV.Gen(XDim*YDim); ColMajor = colmajor;
   }
+  void GenData(const TSizeTy& _DataDim, const TSizeTy& _NData){
+	  Assert((_DataDim >= 0) && (_NData >= 0));
+	  XDim = colmajor ? _DataDim : _NData; YDim = colmajor ? _NData : _DataDim;  ValV.Gen(XDim*YDim); ColMajor = colmajor;
+  }
   TSizeTy GetXDim() const {return XDim;}
   TSizeTy GetYDim() const {return YDim;}
   TSizeTy GetRows() const {return XDim;}
   TSizeTy GetCols() const {return YDim;}
+  TSizeTy GetMajorSize() const{ return colmajor ? GetCols() : GetRows(); }
+  TSizeTy GetDatas() const{ return  GetMajorSize(); }
+  TSizeTy GetNonMajorSize() const{ return colmajor ? GetRows() : GetCols(); }
   TVec<TVal, TSizeTy>& Get1DVec(){return ValV;}
 
   const TVal& At(const TSizeTy& X, const TSizeTy& Y) const {
@@ -1442,6 +1475,7 @@ public:
     for (TSizeTy Y=0; Y<TSizeTy(YDim); Y++){At(X, Y)=Val;}}
   void PutY(const TSizeTy& Y, const TVal& Val){
     for (TSizeTy X=0; X<TSizeTy(XDim); X++){At(X, Y)=Val;}}
+  void Put(const TSizeTy& D, const TVal& Val){ colmajor ? PutY(D, Val) : PutX(D, Val); }
   TVal GetXY(const TSizeTy& X, const TSizeTy& Y) const {
 	  Assert((0 <= X) && (X<TSizeTy(XDim)) && (0 <= Y) && (Y<TSizeTy(YDim)));
 	  return colmajor ? ValV[Y*XDim + X] : ValV[X*YDim + Y];
@@ -1455,13 +1489,20 @@ public:
   void GetColPtr(const TSizeTy& ColN, TVec<TVal, TSizeTy>& Vec);
   void GetColSIter(const TSizeTy& ColN, TSIter<TVal, TSizeTy>& Vec);
 
+  void GetData(const TSizeTy& DatN, TVec<TVal, TSizeTy>& Vec) const{ colmajor ? GetCol(DatN, Vec) : GetRow(DatN, Vec); }
+  void GetDataPtr(const TSizeTy& DatN, TVec<TVal, TSizeTy>& Vec) { colmajor ? GetColPtr(DatN, Vec) : GetRowPtr(DatN, Vec); }
+  void GetDataSIter(const TSizeTy& DatN, TSIter<TVal, TSizeTy>& Vec) const{ colmajor ? GetColSIter(DatN, Vec) : GetRowSIter(DatN, Vec); }
+
+
+
   void SetRow(const TSizeTy& RowN, const TVec<TVal, TSizeTy>& Vec);
   void SetCol(const TSizeTy& ColN, const TVec<TVal, TSizeTy>& Vec);
-
+  void SetData(const TSizeTy& DatN, const TVec<TVal, TSizeTy>& Vec){ colmajor ? SetCol(DatN, Vec) : SetRow(DatN, Vec); }
   void AddCol(const TVec<TVal, TSizeTy>& Col) { AddYDim();	SetCol(GetCols()-1, Col); }
 
   void SwapX(const TSizeTy& X1, const TSizeTy& X2);
   void SwapY(const TSizeTy& Y1, const TSizeTy& Y2);
+  void Swap(const TSizeTy& D1, const TSizeTy& D2){ colmajor ? SwapY(D1, D2) : SwapX(D1, D2); }
   void Swap(TVVec<TVal, TSizeTy, colmajor>& VVec);
 
   void ShuffleX(TRnd& Rnd);
@@ -1469,10 +1510,12 @@ public:
   void GetMxValXY(TSizeTy& X, TSizeTy& Y) const;
 
   void CopyFrom(const  TVVec<TVal, TSizeTy, colmajor>& VVec);
-  void AddXDim();
+  void AddXDim(const TSizeTy& NDims=1);
   void AddYDim(const TSizeTy& NDims=1);
+  void AddDim(const TSizeTy& NDims = 1){colmajor ? AddYDim(NDims) : AddXDim(NDims);}
   void DelX(const TSizeTy& X);
   void DelY(const TSizeTy& Y);
+  void DelData(const TSizeTy& D){ colmajor ? DelY(D) : DelX(D); }
   void DelCols(const TVec<TNum<TSizeTy>, TSizeTy>& ColIdV);
 #ifndef INTEL_TRANSPOSE
   void Transpose() {
@@ -1484,7 +1527,7 @@ public:
 			  Counter++;
 		  }
 	  }
-	  std::swap(ValV, ValV2);
+	  ValV = std::move(ValV2);
 	  TSizeTy temp2 = XDim;
 	  XDim = YDim;
 	  YDim = temp2;

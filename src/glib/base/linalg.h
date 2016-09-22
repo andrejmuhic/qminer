@@ -1,5 +1,7 @@
 /**
- * Copyright (c) 2015, Jozef Stefan Institute, Quintelligence d.o.o. and contributors
+ * Copyright (c) 2015, Jozef Stefan Institute, Quintelligence d.o.o.,
+ * external high performance libraries interface and templatization done by Andrej Muhic
+ * 
  * All rights reserved.
  *
  * This source code is licensed under the FreeBSD license found in the
@@ -735,6 +737,7 @@ public:
 	/// Normalize the columns of X
 	TEMP_LA	static void NormalizeColumns(TDenseVV& X);
 	TEMP_LA	static void NormalizeRows(TDenseVV& X);
+	TEMP_LA	static void NormalizeData(TDenseVV& X);
 	TEMP_LA	static void NormalizeColumns(TDenseVV& X, TBool ColumnMajor);
 	template <class TType, class TSizeTy = int, bool ColMajor = false, class IndexType = TInt>
 	inline static void NormalizeColumns(TTriple<TVec<IndexType, TSizeTy>, TVec<IndexType, TSizeTy>,

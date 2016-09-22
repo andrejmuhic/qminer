@@ -1833,7 +1833,9 @@ public:
 
 /////////////////////////////////////////////////
 // Short-Float
-class TSFlt{
+typedef TNum<sdouble> TSFlt;
+template<>
+class TNum<sdouble>{
 public:
   sdouble Val;
 public:

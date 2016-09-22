@@ -158,6 +158,9 @@ void TSAppSrvFun::Exec(const TStrKdV& FldNmValPrV, const PSAppSrvRqEnv& RqEnv) {
         // prepare response
         HttpResp = THttpResp::New(THttp::OkStatusCd,
 			ContTypeVal, false, BodySIn, TStr(), StopWatch.GetMSecInt());
+		//Andrej
+		//Access-Control-Allow-Origin: *
+		//HttpResp->AddFldVal("Access-Control-Allow-Origin", "*", false);
     } catch (PExcept Except) {
         // known internal error
         Notify->OnStatusFmt("Exception: %s", Except->GetMsgStr().CStr());

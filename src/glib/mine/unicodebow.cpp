@@ -1,5 +1,5 @@
 ﻿/**
- * Copyright (c) 2015, Jozef Stefan Institute, Quintelligence d.o.o. and contributors
+ * Copyright (c) 2015, Jozef Stefan Institute, Andrej Muhic
  * All rights reserved.
  * 
  * This source code is licensed under the FreeBSD license found in the
@@ -187,6 +187,16 @@ namespace TUnicodeVSM {
 		new_line_char.Load(SIn);
 		BrOnSt.Load(SIn);
 		WordIds.Load(SIn);
+		//Start: fix for broken UnicodeDef.Bin
+		TUStrIntH WordIdsConvert;
+		int n = WordIds.Len();
+		TInt WId; TUStr WordUStr; TInt WordFq;
+		for (WId = 0; WId < n; WId++) {
+			this->WordIds.GetKeyDat(WId, WordUStr, WordFq);
+			WordIdsConvert.AddDat( TUStr(WordUStr.GetStr()) ) = WordFq;
+		}
+		WordIds = WordIdsConvert;
+		//End: fix for broken UnicodeDef.Bin
 		WordNgrams.Load(SIn);
 		Ngrams.Load(SIn);
 		Matrix.Load(SIn);
@@ -277,72 +287,7 @@ namespace TUnicodeVSM {
 			return TVec<TIntKd>();
 		}
 	};
-	//Version that returns the format suitable for external libraries
-	void TGlibUBow::TextToVec(TUStr& Text, TPair<TIntV, TFltV>& SparseVec) {
-		TVec<TIntKd> SpVec = TextToVec(Text);
-		//Convert
-		TIntV IdxV; 
-		TFltV ValV;
-		IdxV.Gen(SpVec.Len());
-		ValV.Gen(SpVec.Len());
-		for (int ElN = 0; ElN < SpVec.Len(); ElN++) {
-			IdxV[ElN] = SpVec[ElN].Key;
-			ValV[ElN] = SpVec[ElN].Dat;
-		}
-		SparseVec.Val1 = IdxV;
-		SparseVec.Val2 = ValV;
-	}
 
-	void TGlibUBow::TextToVec(TUStrV& Docs, TTriple<TIntV, TIntV, TFltV>& DocMatrix, const TFltV& invdoc) {
-		TIntV* WordIdxV = &DocMatrix.Val1;
-		TIntV* DocIdxV  = &DocMatrix.Val2;
-		TFltV* ValV     = &DocMatrix.Val3;
-		int n = Docs.Len();
-		TVec<TVec<TIntKd>> DocV;
-		DocV.Gen(n, n);
-#pragma omp parallel for
-		for (int i = 0; i < Docs.Len(); i++){
-			TVec<TIntKd>& SpVec = DocV[i];
-			SpVec = TextToVec(Docs[i]);
-		}
-
-		for (int i = 0; i < Docs.Len(); i++){
-			TVec<TIntKd>& SpVec = DocV[i];
-			int m = SpVec.Len();
-			for (int ElN = 0; ElN < m; ElN++) {
-				DocIdxV->Add(i);
-				TInt Index = SpVec[ElN].Key;
-				TInt Freq = SpVec[ElN].Dat;
-				WordIdxV->Add(Index);
-				TFlt Weighted = (double)(Freq.Val) * invdoc[Index.Val];
-				ValV->Add(Weighted);
-			}
-		}
-	}
-
-	void TGlibUBow::TextToVec(TUStrV& Docs, TTriple<TIntV, TIntV, TFltV>& DocMatrix) {
-		TIntV* WordIdxV = &DocMatrix.Val1;
-		TIntV* DocIdxV = &DocMatrix.Val2;
-		TFltV* ValV     = &DocMatrix.Val3;
-		int n = Docs.Len();
-		TVec<TVec<TIntKd>> DocV;
-		DocV.Gen(n, n);
-#pragma omp parallel for
-		for (int i = 0; i < Docs.Len(); i++){
-			TVec<TIntKd>& SpVec = DocV[i];
-			SpVec = TextToVec(Docs[i]);
-		}
-
-		for (int i = 0; i < Docs.Len(); i++){
-			TVec<TIntKd>& SpVec = DocV[i];
-			int m = SpVec.Len();
-			for (int ElN = 0; ElN < m; ElN++) {
-				DocIdxV->Add(i);
-				WordIdxV->Add(SpVec[ElN].Key);
-				ValV->Add(TFlt(SpVec[ElN].Dat));
-			}
-		}
-	}
 
 	void TGlibUBow::AddTokenize(TUStr& Doc, TBool AddToMatrix, TBool UpdateVoc){
 		switch (this->Option.Val){
@@ -847,6 +792,32 @@ namespace TUnicodeVSM {
 			i++;
 		}
 	}
+
+	void TGlibUBow::LoadWordVocabulary(TStr& FileName) {
+		if (!TFile::Exists(FileName)) {
+			printf("Cannot access file %s\n", FileName.CStr());
+			return;
+		}
+		PSIn  File = new TFIn(FileName);
+		TStr Buffer; Buffer  = TStr::LoadTxt(File);
+		printf("Buffer len: %d\n", Buffer.Len());
+		TStrV Words;
+		Buffer.SplitOnAllCh('\n', Words);
+		this->Matrix.Clr();
+		this->WordIds.Clr();
+
+
+		TUStrIntH CompactWordIds;
+		int n_Words = Words.Len();
+		for (int i = 0; i < n_Words; i++) {
+			TUStr WordUStr = TUStr(Words[i] ); TInt WordFq = 1;
+			CompactWordIds.AddDat(WordUStr) = WordFq;
+		}
+
+		this->WordIds = CompactWordIds;
+		printf("___________\nNumber of words after load: %d \n________________________", n_Words);
+	}
+
 	void TGlibUBow::CompactVocabulary(TIntV& WordIndex, TInt Shift){
 		this->Matrix.Clr();
 		switch (Option) {
@@ -857,7 +828,7 @@ namespace TUnicodeVSM {
 								   printf("___________\nNumber of words before cut off: %d \n________________________", n_Words);
 								   // cut low & high frequency words
 								   int counter = 0;
-								   int counter_prazen = 0;
+								   int counter_empty = 0;
 								   int WId = 0;
 								   for (int i = 0; i < n; i++){
 									   WId = WordIndex[i] - Shift;
@@ -868,7 +839,7 @@ namespace TUnicodeVSM {
 									   //TUStr WordStr = this->WordIds.GetKey(WId);
 									   this->WordIds.GetKeyDat(WId, WordUStr, WordFq);
 									   if (WordFq == 0){
-										   counter_prazen++;
+										   counter_empty++;
 									   }
 									   counter++;
 									   CompactWordIds.AddDat(WordUStr) = WordFq;
@@ -877,7 +848,7 @@ namespace TUnicodeVSM {
 								   this->WordIds.Clr();
 								   this->WordIds = CompactWordIds;
 								   printf("___________\nNumber of words after cut off: %d \n________________________", counter);
-								   printf("___________\nNumber of non appearing words before cut off: %d \n________________________", counter_prazen);
+								   printf("___________\nNumber of non appearing words before cut off: %d \n________________________", counter_empty);
 		}
 			break;
 		case tWordNgram:{
@@ -887,7 +858,7 @@ namespace TUnicodeVSM {
 										printf("___________\nNumber of word ngrams before cut off: %d \n________________________", n_WordNgrams);
 										// cut low & high frequency words
 										int counter = 0;
-										int counter_prazen = 0;
+										int counter_empty = 0;
 										int WNgramId = 0;
 										for (int i = 0; i < n; i++){
 											WNgramId = WordIndex[i] - Shift;
@@ -898,7 +869,7 @@ namespace TUnicodeVSM {
 											//TUStr WordStr = this->WordIds.GetKey(WId);
 											this->WordNgrams.GetKeyDat(WNgramId, WordNgramUStr, WordNgramFq);
 											if (WordNgramFq == 0){
-												counter_prazen++;
+												counter_empty++;
 											}
 											counter++;
 											CompactWordNgrams.AddDat(WordNgramUStr) = WordNgramFq;
@@ -908,7 +879,7 @@ namespace TUnicodeVSM {
 										this->WordNgrams = CompactWordNgrams;
 
 										printf("___________\nNumber of word ngrams after cut off: %d \n________________________", counter);
-										printf("___________\nNumber of non appearing ngrams before cut off: %d \n________________________", counter_prazen);
+										printf("___________\nNumber of non appearing ngrams before cut off: %d \n________________________", counter_empty);
 		}
 			break;
 			//tCharNgram: or BowOptTag::tCharNgramSimple is default
@@ -919,7 +890,7 @@ namespace TUnicodeVSM {
 										printf("___________\nNumber of ngrams before cut off: %d \n________________________", n_Ngrams);
 										// cut low & high frequency words
 										int counter = 0;
-										int counter_prazen = 0;
+										int counter_empty = 0;
 										int NgramId = 0;
 										for (int i = 0; i < n; i++){
 											NgramId = WordIndex[i] - Shift;
@@ -930,7 +901,7 @@ namespace TUnicodeVSM {
 											//TUStr WordStr = this->WordIds.GetKey(WId);
 											this->Ngrams.GetKeyDat(NgramId, NgramUStr, NgramFq);
 											if (NgramFq == 0){
-												counter_prazen++;
+												counter_empty++;
 											}
 											counter++;
 											CompactNgrams.AddDat(NgramUStr) = NgramFq;
@@ -940,7 +911,7 @@ namespace TUnicodeVSM {
 										this->Ngrams = CompactNgrams;
 
 										printf("___________\nNumber of ngrams after cut off: %d \n________________________", counter);
-										printf("___________\nNumber of non appearing ngrams before cut off: %d \n________________________", counter_prazen);
+										printf("___________\nNumber of non appearing ngrams before cut off: %d \n________________________", counter_empty);
 		}
 			break;
 		}

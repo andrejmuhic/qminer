@@ -62,7 +62,8 @@
 #include "anomaly.h"
 
 // cross-lingual
-#include "crosslingual.h"
+//#include "crosslingual.h"
+#include "crosslingualTemplate.h"
 
 // Signal-Processing
 #include "signalproc.h"

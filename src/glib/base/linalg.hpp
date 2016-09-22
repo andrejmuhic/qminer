@@ -1174,6 +1174,16 @@ void TLinAlg::NormalizeRows(TVVec<TNum<TType>, TSizeTy, ColMajor>& X) {
 	}
 }
 
+template <class TType, class TSizeTy, bool ColMajor>
+void TLinAlg::NormalizeData(TVVec<TNum<TType>, TSizeTy, ColMajor>& X) {
+	for (TSizeTy DataN = 0; DataN < X.GetDatas(); DataN++) {
+		TVec<TNum<TType>, TSizeTy> Data;
+		X.GetDataPtr(DataN, Data);
+		Normalize(Data);
+	}
+}
+
+
 #ifdef INTEL
 template <class TType, class TSizeTy, bool ColMajor>
 void TLinAlg::NormalizeColumns(TVVec<TNum<TType>, TSizeTy, ColMajor>& X, TBool ColumnMajor) {
@@ -1953,24 +1963,17 @@ void TLinAlg::MultiplyT(const TPair<TVec<IndexType, TSizeTy>, TVec<TType, TSizeT
 	// Assumptions on x
 	EAssert(x.Val1.Len() == x.Val2.Len());
 	// Dimensions must match
-	EAssert(A.GetCols() >= (x.Val1.Len() == 0 ? 0 : x.Val1[x.Val1.GetMxValN()] + 1) && A.GetRows() == y.Len());
+	EAssert(A.GetRows() >= (x.Val1.Len() == 0 ? 0 : x.Val1[x.Val1.GetMxValN()] + 1) && A.GetCols() == y.Len());
 	TLinAlgTransform::FillZero(y);
 	int nnz = x.Val1.Len();
 	for (TSizeTy i = 0; i < nnz; i++) {
 		TVec<TType, TSizeTy> row;
 		(const_cast<TVVec<TType, TSizeTy, ColMajor> &>(A)).GetRowPtr(x.Val1[i], row);
-		//printf("vrstic %d, stolpcev %d\n", A.GetRows(), A.GetCols());
-		//printf("Row len %d\n", row.Len());
-		//printf("i je %d, vrstica je %d\n", i, x.Val1[i]);
-		//TLinAlg::LinCombInPlace(x.Val2[i], row, 0.0, y);
 #ifdef BLAS
-		//y = k * x + y
-		//cblas_daxpy(row.Len(), x.Val2[i].Val, &row[0].Val, 1, &y[0].Val, 1);
-		//cblas_daxpy(x.Len(), k_, (Loc *)&x[0].Val, 1, (Loc *) &y[0].Val, 1);
 		AddVec(x.Val2[i].Val, row, y);
 #else
 		TLinAlg::LinCombInPlace(x.Val2[i].Val, row, 1.0, y);
-#endif			//printf("Lincomb does not fail\n");
+#endif
 	}
 }
 // TEST Move to BLAS
