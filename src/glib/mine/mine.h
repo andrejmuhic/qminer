@@ -83,4 +83,7 @@
 // non-negative matrix factorization
 #include "nmf.h"
 
+// kernel-density-estimation
+#include "kerneldensity.h"
+
 #endif
