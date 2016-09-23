@@ -34,6 +34,7 @@
 
 		colmajor ? TLinAlg::Multiply(*ProjMat, DocTemp, Pd) : TLinAlg::MultiplyT(DocTemp, *ProjMat, Pd);
 
+
 #ifdef DEBUG_ENABLE
 		printf("Projection done!\n");
 #endif DEBUG_ENABLE
@@ -49,21 +50,10 @@
 
 		if ( (!DmozSpecial && Projected.Empty()) ) {
 			//printf("Generation of projected vector of length %d \n", ConMat->GetRows());
-			//[Andrej]
-		#ifdef DEBUG_ENABLE
-			printf("Generation of projected vector started\n");
-		#endif
-			//Projected.Gen(ConMat->GetRows());
 			colmajor ? Projected.Gen(ConMat->GetRows()) : Projected.Gen(ConMat->GetCols());
-		#ifdef DEBUG_ENABLE
-			printf("Generation of projected vector done\n");
-		#endif
 		}
 		//When DmozSpecial flag is enabled identity matrix is assumed ... no change!!!
 		if (!DmozSpecial){
-		#ifdef DEBUG_ENABLE
-			printf("Normal multiplication!\n");
-		#endif
 			colmajor ? TLinAlg::Multiply(*ConMat, Pd, Projected, transpose) : TLinAlg::Multiply(*ConMat, Pd, Projected, transpose);
 		}
 		else{
@@ -77,9 +67,6 @@
 		const TVec<TNum<val>, TSizeTy>* Center = NULL;
 		const TVVec<TNum<val>, TSizeTy, colmajor>* ConMat = NULL;
 		const TVec<TNum<val>, TSizeTy>* InvDocV = NULL;
-		//printf("start select\n");
-		//			bool OK = TCLHubProjector::SelectMatrices(DocLangId, Lang2Id, ProjMat, Center, ConMat, InvDocV, DmozSpecial);
-		//			TLinAlg::MultiplyT(*ConMat, Pd_minus_c, Projected);
 		TBool transpose;
 		bool OK = SelectMatrices(DocLangId, TargetSpace, ProjMat, Center, ConMat, InvDocV, transpose);
 		//Do not go forward if data was not initialized
@@ -100,7 +87,7 @@
 			//printf("selected hub projector %s %s identity assumed, dims %d %d %d %d %d %d\n", DocLangId.CStr(), Lang2Id.CStr(), Center->Len(), Center->Len(), Center->Len(), InvDocV->Len(), ProjMat->GetRows(), ProjMat->GetCols());
 		}
 
-		TTmStopWatch time;
+		//TTmStopWatch time;
 		TTriple<TVec<TNum<TSizeTy>, TSizeTy>, TVec<TNum<TSizeTy>, TSizeTy>, TVec<TNum<val>, TSizeTy>> DocMatrixTemp;
 		if (Tfidf){
 			DocMatrixTemp = DocMatrix;
@@ -108,12 +95,9 @@
 			for (TSizeTy ElN = 0; ElN < DocMatrixTemp.Val1.Len(); ElN++) {
 				DocMatrixTemp.Val3[ElN] = DocMatrix.Val3[ElN] * (*InvDocV)[DocMatrix.Val1[ElN]];
 			}
-			//time.Stop("Inverse indexing costs: ");
-			//time.Reset(false);
 		}
 		//Projected = ConMat(ProjMat*DocMatrix - Center* ones(1, size(DocMatrix,2)))
 		TSizeTy Docs = DocMatrix.Val2[DocMatrix.Val2.GetMxValN()] + 1;
-		//printf("Number of docs %d\n", Docs);
 		// Compute: Pd_minus_cones := ProjMat*DocMatrix - Center* ones(1, size(DocMatrix,2))
 		TVVec<TNum<val>, TSizeTy, colmajor> Pd_minus_cones;
 #ifdef COLMAJOR_DATA
@@ -121,59 +105,41 @@
 #else
 		Pd_minus_cones.Gen(Docs, ProjMat->GetCols());
 #endif
-		//printf("Vector generated \n");
-		//printf("Start multiply sparse %d", Docs);
-		//time.Start();
-		//ROW and COLUMN major mess
-		//TLinAlg::Transpose(DocMatrixTemp, DocMatrixTempT);
-		if (Tfidf){
-			//printf("TFidf\n");
-#ifdef COLMAJOR_DATA
-			//Andrej index template madness, add IndexType to template
-			TLinAlg::Multiply(*ProjMat, DocMatrixTemp, Pd_minus_cones);
-#else
-			TLinAlg::MultiplyT(DocMatrixTemp, *ProjMat, Pd_minus_cones);
 
-			//Andrej index template madness, add IndexType to template
-#endif
-		}
-		else{
+//Tfidf is always preapplied currently
 #ifdef COLMAJOR_DATA
-			//Andrej index template madness, add IndexType to template
 			TLinAlg::Multiply(*ProjMat, DocMatrix, Pd_minus_cones);
 #else
-			//Andrej index template madness, add IndexType to template
 			TLinAlg::MultiplyT(DocMatrix, *ProjMat, Pd_minus_cones);
 #endif
-		}
-		//time.Stop("Projection costs: ");
-		//time.Reset(false);
-		//SwDispTmMsg("finished multiply");
-		//time.Start();
+
 
 #ifdef COLMAJOR_DATA
 #ifndef INTEL
+		/*
 		for (int ColN = 0; ColN < Pd_minus_cones.GetCols(); ColN++) {
 			TLinAlg::AddVec(-1.0, *Center, Pd_minus_cones, ColN);
-		}
+		}*/
 #else
+		/*
 		TFltV enke(Pd_minus_cones.GetCols()); TLAMisc::Fill(enke, 1);
 		for (int RowN = 0; RowN < Pd_minus_cones.GetRows(); RowN++) {
 			TFltV row; Pd_minus_cones.GetRowPtr(RowN, row);
 			TLinAlg::AddVec((*Center)[RowN].Val, enke, row);
 		}
+		*/
 #endif
 #else
 #ifndef INTEL
+       /*
 		for (int RowN = 0; RowN < Pd_minus_cones.GetRows(); RowN++) {
 			TFltV row;
 			Pd_minus_cones.GetRowPtr(RowN, row);
 			TLinAlg::AddVec(-1.0, *Center, row, row);
-			//TLinAlg::AddVec(-1.0, *Center, row);
-			//TLinAlg::AddVec(-1.0, *Center, Pd_minus_cones, RowN);
 		}
+		*/
 #else
-		/*Andrej HOOT
+		/*Andrej no centering in practical applications, if you do centering you have to normalize twice, first tfidf, then normalize and at the end normalize again
 		for (TSizeTy RowN = 0; RowN < Pd_minus_cones.GetRows(); RowN++) {
 			//printf("%d/%d\n", RowN, Pd_minus_cones.GetRows());
 			TVec<TVal, TSizeTy> row;
@@ -183,20 +149,14 @@
 		*/
 #endif
 #endif
-
-		//time.Stop("Naive centering of data: ");
-		//time.Reset(false);
-		//SwDispTmMsg("finished advec");
 		if (Projected.Empty() && !DmozSpecial) {
-			//printf("Projected is empty!!!");
 #ifdef COLMAJOR_DATA
 			Projected.Gen(ConMat->GetRows(), Pd_minus_cones.GetCols());
 #else
 			Projected.Gen(Pd_minus_cones.GetRows(), ConMat->GetCols());
 #endif
 		}
-		//SwDispTmMsg("finished gen");
-		//time.Start();
+
 		if (ConMat != NULL){
 			if ( (DmozSpecial || (*ConMat)(0, 0).Val == 1.0) ){
 				//[ANDREJ]printf("Identity matrix detected!!!\n");
@@ -208,7 +168,6 @@
 #ifdef COLMAJOR_DATA
 				TLinAlg::Multiply(*ConMat, Pd_minus_cones, Projected);
 #else
-				//			TLinAlg::MultiplyT(*ConMat, Pd_minus_c, Projected);
 				TLinAlg::Multiply(Pd_minus_cones, *ConMat, Projected, false, !transpose);
 #endif
 
@@ -217,6 +176,4 @@
 		else{
 			Projected = Pd_minus_cones;
 		}
-		//time.Stop("Projection with connection matrix costs: ");
-		//SwDispTmMsg("finished multiply conmat pd_minus_cones");
 	}
